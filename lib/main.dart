@@ -1,129 +1,194 @@
 import 'package:flutter/material.dart';
-import 'package:english_words/english_words.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/cupertino.dart';
 
-void main() => runApp(MyApp());
+void main() => runApp(FriendlychatApp());
 
-class MyApp extends StatelessWidget {
+class FriendlychatApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-
     return MaterialApp(
-      title: 'Startup Name Generator',
-      theme: ThemeData(
-        primaryColor: Colors.white,
-      ),
-      home: RandomWords(),
+      title: 'Friendlychat',
+      // defaultTargetPlatform from package:flutter/foundation.dart
+      theme: defaultTargetPlatform == TargetPlatform.iOS
+        ? kIOSTheme
+        : kDefaultTheme,
+      home: ChatScreen(),
     );
   }
 }
 
+class ChatScreen extends StatefulWidget {
+  @override
+  State createState() => ChatScreenState();
+}
 
-class RandomWordsState extends State<RandomWords> {
-  final _suggestion = <WordPair>[];
-  final _saved = Set<WordPair>();
-  final _biggerFont = const TextStyle(fontSize: 18.0);
+class ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
+  final _textController = TextEditingController();
+  final _messages = List<ChatMessage>();
+  bool _isComposing = false;
   @override
   Widget build(BuildContext context) {
-
-    return Scaffold(
+    return new Scaffold(
       appBar: AppBar(
-        title: Text('Startup Name Generator'),
-        actions: <Widget>[
-          IconButton(icon: Icon(Icons.list), onPressed: _pushSaved),
-        ],
+        title: Text('Friendlychat'),
+        elevation:
+          Theme.of(context).platform == TargetPlatform.iOS ? 0.0 : 4.0,
       ),
-      body: _buildSuggestions(),
-    );
-  }
-
-  Widget _buildSuggestions() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16.0),
-      itemBuilder: /*1*/ (context, i) {
-        if (i.isOdd) return Divider(); /*2*/
-
-        final index = i ~/ 2; /*3*/
-        if (index >= _suggestion.length) {
-          _suggestion.addAll(generateWordPairs().take(10));
-        }
-        return _buildRow(_suggestion[index]);
-      },
-    );
-  }
-
-  Widget _buildRow(WordPair pair) {
-    final bool alreadySaved = _saved.contains(pair);
-    return ListTile(
-      title: Text(
-        pair.asPascalCase,
-        style: _biggerFont,
-      ),
-      trailing: Icon(
-        alreadySaved ? Icons.favorite : Icons.favorite_border,
-        color: alreadySaved ? Colors.red : null
-      ),
-      onTap: () {
-        setState(() {
-          if (alreadySaved) {
-            _saved.remove(pair);
-          } else {
-            _saved.add(pair);
-          }
-        });
-      },
-    );
-  }
-
-  void _pushSaved() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (BuildContext context) {
-          final Iterable<ListTile> tiles = _saved.map(
-              (WordPair pair) {
-                return ListTile(
-                  title: Text(
-                    pair.asPascalCase,
-                    style: _biggerFont,
-                  ),
-                );
-              }
-          );
-          final List<Widget> divider = ListTile
-            .divideTiles(
-              context: context,
-              tiles: tiles,
-          )
-          .toList();
-          return Scaffold(
-            appBar: AppBar(
-              title: Text('Saved Suggestions'),
+      body: Container(
+        child: Column(
+          children: <Widget>[
+            Flexible(
+                child: ListView.builder(
+                  padding: EdgeInsets.all(8.0),
+                  reverse: true,
+                  itemBuilder: (_, int index) => _messages[index],
+                  itemCount: _messages.length,
+                )
             ),
-            body: ListView(children: divider),
-          );
-        }
-      )
+            Divider(height: 1.0),
+            Container(
+              decoration: BoxDecoration(
+                color: Theme.of(context).cardColor
+              ),
+              child: _buildTextComposer(),
+            )
+          ],
+        ),
+        decoration: Theme.of(context).platform == TargetPlatform.iOS
+          ? BoxDecoration(
+              border: Border(
+                top: BorderSide(color: Colors.grey[200]),
+              )
+            )
+          : null
+      ),
+      //_buildTextComposer(),
     );
+  }
+
+  /**
+   * It's good practice to dispose of your animation controllers
+   * to free up your resources when they are no longer needed
+   */
+  @override
+  void dispose() {
+    for(ChatMessage message in _messages)
+      message.animationController.dispose();
+    super.dispose();
+  }
+
+  Widget _buildTextComposer() {
+    return IconTheme(
+      data: IconThemeData(
+        color: Theme.of(context).accentColor,
+      ),
+      child: Container(
+          margin: const EdgeInsets.symmetric(horizontal: 8.0),
+          child: Row(
+            children: <Widget>[
+              Flexible(
+                child: TextField(
+                  controller: _textController,
+                  onChanged: (String text) {
+                    setState(() {
+                      _isComposing = text.length > 0;
+                    });
+                  },
+                  onSubmitted: _handleSubmitted,
+                  decoration: InputDecoration.collapsed(hintText: 'Send a message'),
+                ),
+              ),
+              new Container(
+                margin: EdgeInsets.symmetric(horizontal: 4.0),
+                child: Theme.of(context).platform == TargetPlatform.iOS
+                    ? CupertinoButton(
+                      child: Text('Send'),
+                      onPressed: _isComposing
+                          ? () => _handleSubmitted(_textController.text)
+                          : null, // value null disabling the send button
+                      )
+                    : IconButton(
+                        icon: Icon(Icons.send),
+                        onPressed: _isComposing
+                            ? () => _handleSubmitted(_textController.text)
+                            : null, // value null disabling the send button
+                      ),
+              )
+            ],
+          )
+      ),
+    );
+  }
+
+  void _handleSubmitted(String text) {
+    // clear text
+    _textController.clear();
+    // updated send button state via _isComposing param
+    setState(() {
+      _isComposing = false;
+    });
+    ChatMessage message = ChatMessage(
+      text: text,
+      animationController: AnimationController(
+          duration: Duration(milliseconds: 300),
+          vsync: this),
+    );
+    setState(() {
+      _messages.insert(0, message);
+    });
+    message.animationController.forward();
   }
 }
 
-class RandomWords extends StatefulWidget {
-  @override
-  RandomWordsState createState() => RandomWordsState();
-}
+const String _name = "Your Name";
 
-class DogName extends StatelessWidget {
-  final String name;
-
-  const DogName(this.name);
+class ChatMessage extends StatelessWidget {
+  ChatMessage({this.text, this.animationController});
+  final String text;
+  final AnimationController animationController;
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-        decoration: BoxDecoration(color: Colors.lightBlueAccent),
-        child: Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Text(name)
+    return SizeTransition(
+      sizeFactor: CurvedAnimation(parent: animationController, curve: Curves.easeOut),
+      axisAlignment: -1.0,
+      axis: Axis.vertical,
+      child: Container(
+        margin: const EdgeInsets.symmetric(vertical: 10.0),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Container(
+              margin: const EdgeInsets.only(right: 16.0),
+              child: CircleAvatar(child: Text(_name[0])),
+            ),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: <Widget>[
+                  Text(_name, style: Theme.of(context).textTheme.subhead,),
+                  Container(
+                    margin: const EdgeInsets.only(top: 5.0),
+                    child: Text(text),
+                  )
+                ],
+              ),
+            )
+          ],
         ),
+      ),
     );
   }
 }
+
+final ThemeData kIOSTheme = ThemeData(
+  primarySwatch: Colors.orange,
+  primaryColor: Colors.grey[100],
+  primaryColorBrightness: Brightness.light,
+);
+
+final ThemeData kDefaultTheme = ThemeData(
+  primarySwatch: Colors.purple,
+  accentColor: Colors.orangeAccent[400],
+);
